@@ -1,0 +1,9 @@
+{
+  "appId": "com.musicbox.app",
+  "appName": "MusicBox",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "backgroundColor": "#0b0d12"
+  }
+}
