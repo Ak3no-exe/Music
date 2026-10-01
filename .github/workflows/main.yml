@@ -2,8 +2,7 @@ name: Build MusicBox APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -26,7 +25,13 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
+
+      - name: Vérifier Java
+        run: java -version
+
+      - name: Vérifier le projet
+        run: test -f www/index.html
 
       - name: Ajouter Android
         run: npx cap add android
@@ -37,14 +42,16 @@ jobs:
       - name: Synchroniser Capacitor
         run: npx cap sync android
 
+      - name: Donner les permissions Gradle
+        run: chmod +x android/gradlew
+
       - name: Compiler l'APK
         run: |
-          chmod +x android/gradlew
           cd android
           ./gradlew assembleDebug
 
       - name: Récupérer l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: MusicBox-debug
+          name: MusicBox-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
