@@ -22,9 +22,6 @@ jobs:
       - name: Installer les dépendances
         run: npm install
 
-      - name: Installer TypeScript
-        run: npm install --save-dev typescript
-
       - name: Configurer Java
         uses: actions/setup-java@v4
         with:
@@ -34,16 +31,15 @@ jobs:
       - name: Ajouter Android
         run: npx cap add android
 
-      - name: Synchroniser Capacitor
-        run: |
-          npm run build
-          npx cap sync android
+      - name: Construire l'application Web
+        run: npm run build
 
-      - name: Donner les permissions Gradle
-        run: chmod +x android/gradlew
+      - name: Synchroniser Capacitor
+        run: npx cap sync android
 
       - name: Compiler l'APK
         run: |
+          chmod +x android/gradlew
           cd android
           ./gradlew assembleDebug
 
