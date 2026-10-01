@@ -126,7 +126,7 @@ hr{border-top-color:var(--line)}
 </style>
 </head>
 <body>
-<main id="app"></main>
+<main id="app"><div class="empty">Chargement de MusicBox…</div></main>
 <div class="player" id="miniPlayer"></div>
 <div class="bottom"><div class="nav" id="nav"></div></div>
 <div class="fullplayer" id="fullPlayer"></div>
@@ -145,6 +145,13 @@ let db, state={
 };
 let songs=new Map(), audio=document.getElementById('audio');
 
+function showFatal(msg){
+ const a=document.getElementById('app');if(!a)return;
+ a.innerHTML=`<div class="card"><h1>MusicBox</h1><p>Un problème est survenu au démarrage.</p><p style="word-break:break-word;color:var(--danger)">${String(msg).replace(/[<>&]/g,'')}</p><button class="primary" style="width:100%;margin-top:6px" onclick="location.reload()">Réessayer</button><button style="width:100%;margin-top:8px" onclick="continueNoStorage()">Continuer sans sauvegarde</button></div>`;
+}
+window.addEventListener('error',e=>{if(!window.__booted)showFatal(e.message||'Erreur')});
+window.addEventListener('unhandledrejection',e=>{if(!window.__booted)showFatal(e.reason?.message||e.reason||'Erreur')});
+async function continueNoStorage(){db=null;try{renderNav();home();renderPlayer();window.__booted=true}catch(e){showFatal(e.message)}}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=t=>{t=Number(t)||0;let m=Math.floor(t/60),s=Math.floor(t%60);return `${m}:${String(s).padStart(2,'0')}`};
@@ -156,16 +163,18 @@ const colors=['#00e5ff','#39ff14','#ff2bd6','#ff3b3b','#ffb000','#7c5cff','#00ff
 
 function openDB(){
  return new Promise((resolve,reject)=>{
-  const r=indexedDB.open(DB_NAME,DB_VER);
+  const timer=setTimeout(()=>reject(new Error('Le stockage local ne répond pas (délai dépassé)')),6000);
+  let r;try{r=indexedDB.open(DB_NAME,DB_VER)}catch(e){clearTimeout(timer);return reject(e)}
   r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('songs'))d.createObjectStore('songs',{keyPath:'id'});if(!d.objectStoreNames.contains('state'))d.createObjectStore('state',{keyPath:'key'});};
-  r.onsuccess=()=>{db=r.result;resolve()};
-  r.onerror=()=>reject(r.error);
+  r.onsuccess=()=>{clearTimeout(timer);db=r.result;resolve()};
+  r.onerror=()=>{clearTimeout(timer);reject(r.error||new Error('Stockage local indisponible'))};
+  r.onblocked=()=>{clearTimeout(timer);reject(new Error('Stockage local bloqué par un autre onglet ou une autre fenêtre'))};
  });
 }
 const tx=(store,mode='readonly')=>db.transaction(store,mode).objectStore(store);
-async function put(store,obj){return new Promise((res,rej)=>{let r=tx(store,'readwrite').put(obj);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-async function getAll(store){return new Promise((res,rej)=>{let r=tx(store).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-async function del(store,id){return new Promise((res,rej)=>{let r=tx(store,'readwrite').delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
+async function put(store,obj){if(!db)return;return new Promise((res,rej)=>{let r=tx(store,'readwrite').put(obj);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
+async function getAll(store){if(!db)return [];return new Promise((res,rej)=>{let r=tx(store).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function del(store,id){if(!db)return;return new Promise((res,rej)=>{let r=tx(store,'readwrite').delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
 async function saveState(){await put('state',{key:'main',value:state})}
 async function loadState(){let a=await getAll('state');if(a[0]?.value)state={...state,...a[0].value};if(state.design!==2){state.design=2;state.theme='dark';state.accent='#00e5ff'}let a2=await getAll('songs');songs=new Map(a2.map(x=>[x.id,x]));applyTheme()}
 function applyTheme(){document.documentElement.dataset.theme=state.theme==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):state.theme;document.documentElement.style.setProperty('--accent',state.accent);let c=state.accent;document.querySelector('meta[name=theme-color]').content=c}
@@ -181,22 +190,4 @@ function renderNav(){
  $('#nav').innerHTML=items.map(x=>`<button class="${state.tab===x[0]?'active':''}" data-tab="${x[0]}"><div style="font-size:20px">${x[1]}</div>${x[2]}</button>`).join('');
  $('#nav').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 }
-function go(t){state.tab=t;renderNav();({home,library,playlists,profile}[t]||home)();scrollTo(0,0);saveState()}
-
-function songList(arr,opts={}){
- if(!arr.length)return `<div class="empty">Aucun morceau ici.<br><button class="primary" onclick="document.getElementById('fileInput').click()" style="margin-top:12px">Importer de la musique</button></div>`;
- return `<div>${arr.map(s=>{
-  const folder=state.folders.find(f=>f.id===s.folderId);
-  const pls=state.playlists.filter(p=>p.songIds.includes(s.id)).length;
-  return `<div class="song"><div class="row">${cover(s)}<div class="grow" onclick="playSong('${s.id}')"><div class="title">${esc(s.title)}</div><div class="muted">${esc(s.artist||'Artiste inconnu')} · ${fmt(s.duration)}</div></div><div class="actions">
-  <button onclick="toggleFav('${s.id}')" aria-label="Favori">${s.favorite?'♥':'♡'}</button>
-  <button onclick="songMenu('${s.id}')">⋮</button></div></div></div>`;
- }).join('')}</div>`
-}
-
-function header(title,sub=''){
- return `<div class="top"><div class="brand">Music<span>Box</span></div><div class="grow"></div><button class="icon" onclick="openSettings()">⚙</button></div><h1>${title}</h1>${sub?`<p>${sub}</p>`:''}`
-}
-
-function home(){
- const all=[...songs.values()], recent=all.filter(s=>s.lastPlayed).sort((a,b)=>b.lastPlayed-a.lastPlayed).slice(0,5), fav=all.filter(s=>s.favorite).ss
+function go(t){state.tab=t;renderNav();({home,library,playlists,pr
