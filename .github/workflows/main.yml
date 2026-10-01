@@ -2,7 +2,8 @@ name: Build MusicBox APK
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -17,22 +18,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Installer les dépendances
         run: npm install
-
-      - name: Ajouter Android
-        run: npx cap add android
-
-      - name: Synchroniser Capacitor
-        run: npm run build && npx cap sync android
 
       - name: Configurer Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Ajouter Android
+        run: npx cap add android
+
+      - name: Synchroniser Capacitor
+        run: |
+          npm run build
+          npx cap sync android
 
       - name: Donner les permissions Gradle
         run: chmod +x android/gradlew
